@@ -1,148 +1,97 @@
-from flask import Flask, jsonify, request, send_file
-import requests
+from flask import Flask, request, send_file
 import json
 import os
-import logging
+import google.generativeai as genai
 from flask_cors import CORS
+import logging
+from google.generativeai.types import HarmCategory, HarmBlockThreshold
+import aspose.words as aw
+from Markdown2docx import Markdown2docx
 
-app = Flask(__name__)
-CORS(app)
+# Initialize logging
+logging.basicConfig(filename='app.log', level=logging.DEBUG)
 
 # Initializing the App and Gemini API
 working_dir = os.path.dirname(os.path.abspath(__file__))
 config_file_path = f"{working_dir}/config.json"
-config_data = json.load(open(config_file_path))
+config_data = json.load(open("config.json"))
 GOOGLE_API_KEY = config_data["GOOGLE_API_KEY"]
+genai.configure(api_key=GOOGLE_API_KEY)
 
-# Configure logging
-log_file = os.path.join(working_dir, 'app.log')
-logging.basicConfig(filename=log_file, level=logging.INFO,
-                    format='%(asctime)s - %(levelname)s - %(message)s')
+app = Flask(__name__)
+app.debug = True
+CORS(app)
+config = {
+    'temperature': 0,
+    'top_k': 20,
+    'top_p': 0.9,
+    'max_output_tokens': 2048
+}
 
-class RolePlayCreator:
-    def __init__(self, api_key):
-        self.api_key = api_key
-        self.base_url = (
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key="
-            + self.api_key
-        )
+model = genai.GenerativeModel(model_name="gemini-pro")
 
-rolePlayCreator_service = RolePlayCreator(api_key=GOOGLE_API_KEY)
 
-@app.route('/logs', methods=['GET'])
+# Routes
+@app.route('/', methods=['GET'])
 def hello_world():
+    logging.info('Endpoint accessed: /')
     return "Hii"
 
 
-@app.route("/generate-user-story", methods=["POST"])
-def generate_user_story():
+@app.route('/blog', methods=['POST'])
+def blog():
+    input_text = request.form['input_text']
+    no_words = request.form['no_words']
+    blog_style = request.form['blog_style']
+    keywords = request.form['keywords']
+
+    logging.info('Endpoint accessed: /blog')
+    logging.info('Input text: %s', input_text)
+    logging.info('Number of words: %s', no_words)
+    logging.info('Blog style: %s', blog_style)
+    logging.info('Keywords: %s', keywords)
+
+    prompt = f"""Act as a blog post writer. You need to write a blog post on {input_text} with some hashtags 
+    incorporating these {keywords}.Ensure that the blog post is of around {no_words} words.
+    The blog post should address blog {blog_style} level readers.
+    Make sure not to mention number of words counting in response."""
+
+    response = model.generate_content(prompt, safety_settings={
+        HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+        HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+    })
+
+    generated_blog = response.parts[0].text.encode("utf-8")
+    logging.info('Generated blog: %s', generated_blog)
+    return generated_blog
+
+
+@app.route('/download-docx', methods=['POST'])
+def download_docx():
+    markdown_content = request.json['markdown_content']
+    file_path = working_dir + "/blog.md"
+
+    create_md_file(markdown_content, file_path)
+    output = aw.Document()
+    output.remove_all_children()
+    project = Markdown2docx(working_dir + "/Blog")
+    project.eat_soup()
+    project.save()
+    logging.info('Markdown file created successfully.')
+
+    return send_file("Blog.docx", as_attachment=True,
+                     download_name="blog.docx",
+                     mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+
+
+def create_md_file(text_content, file_path):
     try:
-        # Extract request data
-        data = request.get_json()
-        logging.info(f"Received request: {data}")
-
-        # Extract required fields from request body
-        application_type = data.get("application_type")
-        feature = data.get("feature")
-        feature_for = data.get("feature_for")
-        user_role = data.get("user_role", "")
-
-        # Constructing the prompt dynamically based on presence of user_role
-        if user_role:
-            promptt = (
-                f"List all possible user stories for a {application_type} product {feature} feature for {feature_for} development used by {user_role}. "
-                "Each user story should be accompanied by criteria that define when the story is considered complete, including both functional and non-functional requirements.\n"
-                "Return your response in an array of JSON objects. Each object will have 'userStory' key.\n"
-                "Below is the example structure that you should return your response: \n"
-                """[
-                      {{
-                        "userStory": "As a product administrator, I want to able to verify if a
-                         user has registered a specific product using a guest user account, so that I can provide support
-                         if needed",
-                      }},
-                      {{
-                        "userStory": "As a product administrator, I want to able to view the registration details of a specific product registered by a guest user,
-                          so that I can track warranty information and usage history",
-                      }}
-                    ]"""
-            )
-        elif feature_for == "Testing":
-            promptt = (
-                f"List all possible user stories for a QA Enginneer for a {application_type} {feature} feature. "
-                "Each user story should be accompanied by criteria that define when the story is considered complete, including both functional and non-functional requirements.\n"
-                "Return your response in an array of JSON objects. Each object will have 'userStory' key.\n"
-                "Importnat: Below is a example structure that you should return in your response: \n"
-                """[
-                      {{
-                        "userStory": "As a QA , I want to able to test if a
-                         user can buy a product
-                      }},
-                      {{
-                        f"userStory": "As a QA, I should be able to test registertraion on {application_Type} Platform",
-                      }}
-                    ]"""
-            )
-
-        elif feature_for == "Dev-ops":
-            promptt = (
-                f"List all possible user stories for Dev-Ops Enginneer for a {application_type}'s {feature} feature."
-                "Each user story should be accompanied by criteria that define when the story is considered complete, including both functional and non-functional requirements.\n"
-                "Return your response in an array of JSON objects. Each object will have 'userStory' key.\n"
-                "Importnat: Below is the example structure that you should return in your response: \n"
-                """[
-                      {{
-                        "userStory": "As a Dev-ops developer, I want to able to verify if a
-                         user has buy a product, so that I can provide support
-                         if needed",
-                      }},
-                      {{
-                        f"userStory": "As a Dev-ops developer, I should be able to register on {application_Type} Platform",
-                      }}
-                    ]"""
-            )
-
-        headers = {"Content-Type": "application/json"}
-        generation_config = {
-            "temperature": 1.0,
-            "topK": 1,
-            "topP": 1,
-            "maxOutputTokens": 2048,
-            "stopSequences": [],
-        }
-
-        request_body = {
-            "contents": [{"parts": [{"text": promptt}]}],
-            "generationConfig": generation_config,
-        }
-
-        # Log the API request
-        logging.info(f"Request to API: {request_body}")
-
-        response = requests.post(
-            rolePlayCreator_service.base_url, json=request_body, headers=headers
-        )
-        response.raise_for_status()
-        response_data = response.json()
-
-        # Log the API response
-        logging.info(f"Response from API: {response_data}")
-
-        generated_questions = []
-        for candidate in response_data["candidates"]:
-            question_answer_pairs = json.loads(candidate["content"]["parts"][0]["text"])
-            for pair in question_answer_pairs:
-                generated_questions.append(
-                    {
-                        "userStory": pair["userStory"],
-                    }
-                )
-        
-        logging.info(f"Generated user stories: {generated_questions}")
-        return jsonify(generated_questions)
-
+        with open(file_path, 'w') as f:
+            f.write(text_content)
+        logging.info("Markdown file '%s' created successfully.", file_path)
     except Exception as e:
-        logging.error(f"Service Exception: {str(e)}")
-        raise Exception("Error in getting response from Gemini API")
+        logging.error("Error: %s", str(e))
 
-if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0")
+
+if __name__ == '__main__':
+    app.run(debug=True, host="0.0.0.0", port=5001)
