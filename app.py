@@ -1,25 +1,28 @@
-from flask import Flask, request, send_file
+from flask import Flask, request, jsonify, send_file
 import json
 import os
 import google.generativeai as genai
 from flask_cors import CORS
-import logging
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
 import aspose.words as aw
 from Markdown2docx import Markdown2docx
 
-# Initialize logging
-logging.basicConfig(filename='app.log', level=logging.DEBUG)
-
-# Initializing the App and Gemini API
+# Initializing the App and Gemini API: We initialize our Flask app and load the Gemini API client.
 working_dir = os.path.dirname(os.path.abspath(__file__))
+
+# path of config_data file
 config_file_path = f"{working_dir}/config.json"
 config_data = json.load(open("config.json"))
+
+# loading the GOOGLE_API_KEY
 GOOGLE_API_KEY = config_data["GOOGLE_API_KEY"]
+
+# configuring google.generativeai with API key
 genai.configure(api_key=GOOGLE_API_KEY)
 
 app = Flask(__name__)
 app.debug = True
+
 CORS(app)
 config = {
     'temperature': 0,
@@ -31,10 +34,9 @@ config = {
 model = genai.GenerativeModel(model_name="gemini-pro")
 
 
-# Routes
+# Defining Routes: We define two routes - one for the home page and another for handling chat messages.
 @app.route('/', methods=['GET'])
 def hello_world():
-    logging.info('Endpoint accessed: /')
     return "Hii"
 
 
@@ -44,12 +46,6 @@ def blog():
     no_words = request.form['no_words']
     blog_style = request.form['blog_style']
     keywords = request.form['keywords']
-
-    logging.info('Endpoint accessed: /blog')
-    logging.info('Input text: %s', input_text)
-    logging.info('Number of words: %s', no_words)
-    logging.info('Blog style: %s', blog_style)
-    logging.info('Keywords: %s', keywords)
 
     prompt = f"""Act as a blog post writer. You need to write a blog post on {input_text} with some hashtags 
     incorporating these {keywords}.Ensure that the blog post is of around {no_words} words.
@@ -62,7 +58,6 @@ def blog():
     })
 
     generated_blog = response.parts[0].text.encode("utf-8")
-    logging.info('Generated blog: %s', generated_blog)
     return generated_blog
 
 
@@ -77,8 +72,6 @@ def download_docx():
     project = Markdown2docx(working_dir + "/Blog")
     project.eat_soup()
     project.save()
-    logging.info('Markdown file created successfully.')
-
     return send_file("Blog.docx", as_attachment=True,
                      download_name="blog.docx",
                      mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
@@ -86,11 +79,13 @@ def download_docx():
 
 def create_md_file(text_content, file_path):
     try:
+        # Open the file in write mode
         with open(file_path, 'w') as f:
+            # Write the text content to the file
             f.write(text_content)
-        logging.info("Markdown file '%s' created successfully.", file_path)
+        print(f"Markdown file '{file_path}' created successfully.")
     except Exception as e:
-        logging.error("Error: %s", str(e))
+        print("Error:", str(e))
 
 
 if __name__ == '__main__':
