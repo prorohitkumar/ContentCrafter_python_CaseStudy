@@ -3,3 +3,5 @@ Flask-Cors==3.0.10
 google-generativeai==0.4.1
 Werkzeug== 2.2.2
 gunicorn
+aspose-words
+Markdown2docx
