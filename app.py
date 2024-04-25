@@ -29,6 +29,11 @@ class RolePlayCreator:
 
 rolePlayCreator_service = RolePlayCreator(api_key=GOOGLE_API_KEY)
 
+@app.route('/logs', methods=['GET'])
+def hello_world():
+    return "Hii"
+
+
 @app.route("/generate-user-story", methods=["POST"])
 def generate_user_story():
     try:
