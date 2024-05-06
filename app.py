@@ -4,6 +4,11 @@ import json
 import os
 from flask_cors import CORS
 
+import logging
+
+# Configure the logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s',
+                    datefmt='%Y-%m-%d %H:%M:%S')
 
 app = Flask(__name__)
 CORS(app)
@@ -32,6 +37,7 @@ rolePlayCreator_service = RolePlayCreator(api_key=GOOGLE_API_KEY)
 def generate_user_story():
     # Extract request data
     data = request.get_json()
+    logging.info(f"Generating a user story")
 
     # Extract required fields from request body
     application_type = data.get("application_type")
@@ -41,6 +47,7 @@ def generate_user_story():
 
     # Constructing the prompt dynamically based on presence of user_role
     if user_role:
+        logging.info(f"Prompt for  user role:", {feature})
         promptt = (
             f"List all possible user stories for a {application_type} product {feature} feature for {feature_for} development used by {user_role}. "
             "Each user story should be accompanied by criteria that define when the story is considered complete, including both functional and non-functional requirements.\n"
@@ -59,6 +66,7 @@ def generate_user_story():
                 ]"""
         )
     elif feature_for == "Testing":
+        logging.info(f"Prompt for  Testing:", {feature})
         promptt = (
             f"List all possible user stories for a QA Enginneer for a {application_type} {feature} feature. "
             "Each user story should be accompanied by criteria that define when the story is considered complete, including both functional and non-functional requirements.\n"
@@ -76,7 +84,7 @@ def generate_user_story():
         )
 
     elif feature_for == "Dev-ops":
-
+        logging.info(f"Prompt for dev ops", {feature})
         promptt = (
             f"List all possible user stories for Dev-Ops Enginneer for a {application_type}'s {feature} feature."
             "Each user story should be accompanied by criteria that define when the story is considered complete, including both functional and non-functional requirements.\n"
@@ -130,6 +138,7 @@ def generate_user_story():
 
     except Exception as e:
         print("Service Exception:", str(e))
+        logging.error(f" We have a Service Exception while generating user story:", str(e))
         raise Exception("Error in getting response from Gemini API")
 
     # return jsonify({'user_story': user_story})
